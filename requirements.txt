@@ -1,6 +1,9 @@
 opencv-python
 numpy
 torch
+torchvision
 gdown
 tqdm
-glob
+glob2
+pyyaml
+matplotlib
