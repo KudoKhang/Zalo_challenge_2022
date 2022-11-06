@@ -18,4 +18,4 @@ torch==1.8.0+cu111
 torchsummary==1.5.1
 torchvision==0.9.0+cu111
 tqdm==4.62.3
-typing-extensions @ file:///home/conda/feedstock_root/build_artifacts/typing_extensions_1622748266870/work
+typing-extensions

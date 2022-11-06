@@ -19,7 +19,7 @@ Copyright (c) 2020
 from __future__ import print_function, division
 import torch
 import matplotlib.pyplot as plt
-import argparse,os
+import argparse, os
 import pandas as pd
 import cv2
 import numpy as np
@@ -134,11 +134,6 @@ def FeatureMap2Heatmap( x, feature1, feature2, feature3, map_x):
     plt.colorbar()
     plt.savefig(args.log+'/'+args.log + '_x_DepthMap_visual.jpg')
     plt.close()
-    
-
-
-
-
 
 
 def contrast_depth_conv(input):
@@ -191,8 +186,6 @@ class Contrast_depth_loss(nn.Module):    # Pearson range [-1, 1] so if < 0, abs|
         return loss
 
 
-
-
 # main function
 def train_test():
     # GPU  & log file  -->   if use DataParallel, please comment this command
@@ -214,9 +207,9 @@ def train_test():
     
     echo_batches = args.echo_batches
 
-    print("CelebA-Spoofing, {}_{}_{}:\n ".format(year, month, day))
+    print("Zalo-Spoofing, {}_{}_{}:\n ".format(year, month, day))
 
-    log_file.write('CelebA-Spoofing:\n ')
+    log_file.write('Zalo-Spoofing:\n ')
     log_file.flush()
 
     # load the network, load the pre-trained model in UCF101?
@@ -254,7 +247,6 @@ def train_test():
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     
     print(model)
-    
     
     criterion_absolute_loss = nn.MSELoss().cuda()
     criterion_contrastive_loss = Contrast_depth_loss().cuda() 
@@ -417,10 +409,7 @@ def train_test():
     print('Finished Training')
     writer.close()
     log_file.close()
-  
 
-  
- 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="save quality using landmarkpose model")
