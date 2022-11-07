@@ -27,9 +27,8 @@ import random
 import math
 from torch.utils.data import Dataset, DataLoader, distributed
 from torchvision import transforms
-#from torchsummary import summary
+# from torchsummary import summary
 from tqdm import tqdm
-
 
 from models.CDCNs import Conv2d_cd, CDCN, CDCNpp
 from dataloader.Load_training_private_data import Spoofing_train, Normaliztion, ToTensor, RandomHorizontalFlip, Cutout, RandomErasing
@@ -45,7 +44,6 @@ import pdb
 from functions.utils import AvgrageMeter, accuracy, performances, make_weights_for_balanced_classes
 from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
-import wandb
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning) 
@@ -67,7 +65,6 @@ def FeatureMap2Heatmap( x, feature1, feature2, feature3, map_x):
     plt.colorbar()
     plt.savefig(args.log+'/'+args.log + '_x_visual.jpg')
     plt.close()
-
 
     ## first feature
     feature_first_frame = feature1[0,:,:,:].cpu()    ## the middle frame 
@@ -125,12 +122,6 @@ def FeatureMap2Heatmap( x, feature1, feature2, feature3, map_x):
     plt.colorbar()
     plt.savefig(args.log+'/'+args.log + '_x_DepthMap_visual.jpg')
     plt.close()
-    
-
-
-
-
-
 
 def contrast_depth_conv(input):
     ''' compute contrast depth in both of (out, label) '''
@@ -171,21 +162,11 @@ class Contrast_depth_loss(nn.Module):    # Pearson range [-1, 1] so if < 0, abs|
         '''
         contrast_out = contrast_depth_conv(out)
         contrast_label = contrast_depth_conv(label)
-        
-        
+
         criterion_MSE = nn.MSELoss().cuda()
-#        criterion_ETP = nn.CrossEntropyLoss()
-    
+
         loss = criterion_MSE(contrast_out, contrast_label)
-#        loss = criterion_ETP(contrast_out, contrast_label)
-
-        #loss = torch.pow(contrast_out - contrast_label, 2)
-        #loss = torch.mean(loss)
-    
         return loss
-
-
-
 
 # main function
 def train_test():
@@ -205,7 +186,6 @@ def train_test():
         os.makedirs(args.log)
     writer = SummaryWriter(args.log+"/"+args.log+"_cdcn_tb_{:04d}_{:02d}_{:02d}".format(year, month, day))
     log_file = open(args.log+'/'+ args.log+'_log.txt', 'w')
-    
     
     echo_batches = args.echo_batches
 
@@ -249,19 +229,10 @@ def train_test():
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     
     print(model)
-    
-    
+
+
     criterion_absolute_loss = nn.MSELoss().cuda()
     criterion_contrastive_loss = Contrast_depth_loss().cuda() 
-
-#    g = torch.Generator()
-#    g.manual_seed(0)
-
-    
-#    train_data = Spoofing_train(args.train_list, args.image_dir, transform=transforms.Compose([RandomErasing(), RandomHorizontalFlip(),  ToTensor(), Cutout(), Normaliztion()]))
-#    dataloader_train = DataLoader(train_data, batch_size=args.batchsize, shuffle=True, num_workers=4)
-
-    #bandpass_filter_numpy = build_bandpass_filter_numpy(30, 30)  # fs, order  # 61, 64 
 
     ACER_save = 1.0 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
@@ -271,18 +242,13 @@ def train_test():
         
         loss_absolute = AvgrageMeter()
         loss_contra =  AvgrageMeter()
-        #top5 = utils.AvgrageMeter()
-        
-        
-        ###########################################
-        '''                train             '''
-        ###########################################
+
+        # ----------------------------------------- TRAIN -----------------------------------------
         model.train()
         
         # load random data every epoch
         train_data = Spoofing_train(args.train_list, args.image_dir, args.size, transform=transforms.Compose([RandomErasing(), RandomHorizontalFlip(),  ToTensor(), Cutout(), Normaliztion()]))
         dataloader_train = DataLoader(train_data, batch_size=args.batchsize, shuffle=True, num_workers=16)
-
 
         i=0
         running_loss = 0.0
@@ -296,15 +262,11 @@ def train_test():
           
             # forward + backward + optimize
             map_x, embedding, x_Block1, x_Block2, x_Block3, x_input =  model(inputs)
-           
-            
+
             absolute_loss = criterion_absolute_loss(map_x, map_label)
             contrastive_loss = criterion_contrastive_loss(map_x, map_label)
             
             loss =  absolute_loss + contrastive_loss
-            #running_loss += loss 
-            #abs_loss += absolute_loss
-            #cts_loss += contrastive_loss
 
             loss.backward()
             optimizer.step()
@@ -318,7 +280,6 @@ def train_test():
                 FeatureMap2Heatmap(x_input, x_Block1, x_Block2, x_Block3, map_x)
 
                 # log written
-                #print('epoch:%d, mini-batch:%3d, lr=%f, Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f' % (epoch + 1, i + 1, lr,  loss_absolute.avg, loss_contra.avg))
                 log_file.write('epoch:%d, mini-batch:%3d, lr=%f, Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f \n' % (epoch + 1, i + 1, lr, loss_absolute.avg, loss_contra.avg))
                 log_file.flush()
 
@@ -333,49 +294,11 @@ def train_test():
                 writer.add_scalar('contrastive loss',
                             loss_contra.avg,
                             epoch * len(dataloader_train) + i)
-
-                
-            #break
-
-            # if (i+1) % 20 == 0:    # every 1000 mini-batches...
-
-            # # ...log the running loss
-            #     writer.add_scalar('total loss',
-            #                 running_loss / 20,
-            #                 epoch * len(dataloader_train) + i)
-
-            #     writer.add_scalar('absolute loss',
-            #                 abs_loss / 20,
-            #                 epoch * len(dataloader_train) + i)
-
-            #     writer.add_scalar('contrastive loss',
-            #                 cts_loss / 20,
-            #                 epoch * len(dataloader_train) + i)
-
-            # # ...log a Matplotlib Figure showing the model's predictions on a
-            # # random mini-batch
-            #     running_loss = 0.0
-            #     abs_loss = 0.0
-            #     cts_loss = 0.0
             i+=1
         
-        # whole epoch average:
-        # if j%100==0:
-        #     print('epoch:%d, Train:  Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f\n' % (epoch + 1, loss_absolute.avg, loss_contra.avg))
-        #j+=1
-
         log_file.write('epoch:%d, Train: Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f \n' % (epoch + 1, loss_absolute.avg, loss_contra.avg))
         log_file.flush()
            
-    
-                    
-        #### validation/test
-        # if epoch <300:
-        #     epoch_test = 300   
-        # else:
-        #     epoch_test = 20  
-
-        
         model.eval()
         
         with torch.no_grad():
@@ -425,9 +348,6 @@ def train_test():
     print('Finished Training')
     writer.close()
     log_file.close()
-  
-
-  
  
 
 if __name__ == "__main__":
@@ -442,9 +362,11 @@ if __name__ == "__main__":
     parser.add_argument('--size', type=int, default=256, help='Image size')  # 256x256 or 112x112
     parser.add_argument('--epochs', type=int, default=500, help='total training epochs')
     parser.add_argument('--log', type=str, default="CDCNpp_train_oulu_npu_ftech", help='log and save model name')
-    parser.add_argument('--image_dir', type=str, default="/root/", help='Train Image root')
+    parser.add_argument('--image_dir', type=str, default="/root/", help='Train Image root') # khong can
+
     parser.add_argument('--train_list', default='/root/data/ftech_fas_data.txt', help='Train Image list text')
     parser.add_argument('--test_list', default='/root/Xiaomi_Mi_10T_final.txt', help='Test Image list text')
+
     parser.add_argument('--device', default='cuda', help='cpu / cuda')
     parser.add_argument('--weights', type=str, default="/root/CDCNpp_train_oulu_npu_gplx_replay_print_2022_8_20_17.pkl", help='weight root')
     parser.add_argument('--finetune', action='store_true', help='whether finetune other models')
