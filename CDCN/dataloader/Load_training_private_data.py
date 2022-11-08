@@ -250,10 +250,7 @@ class Spoofing_train(Dataset):
         bbox = [0, 0, 0, 0]
         spoofing_label = 0
         if "live" in image_path:
-        #     if 'datadrive2/quannxa' in image_path:
-        #         map_path = image_path.replace("/mnt/datadrive2/quannxa/data_v2/CelebA_Spoof", "/mnt/datadrive/thanhnc/FAS_data/celeb_spoof_depth")
-        #     else:
-            map_path = image_path.replace('crop','depth')
+            map_path = image_path.replace('live','depth')
             image_x, map_x = self.get_single_image_x(image_path, map_path, flag=True)
             spoofing_label = 1
         else:
