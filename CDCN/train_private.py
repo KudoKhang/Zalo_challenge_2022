@@ -29,6 +29,7 @@ from torch.utils.data import Dataset, DataLoader, distributed
 from torchvision import transforms
 # from torchsummary import summary
 from tqdm import tqdm
+from alive_progress import alive_bar
 
 from models.CDCNs import Conv2d_cd, CDCN, CDCNpp
 from dataloader.Load_training_private_data import Spoofing_train, Normaliztion, ToTensor, RandomHorizontalFlip, Cutout, RandomErasing
@@ -139,7 +140,7 @@ def contrast_depth_conv(input):
     
     kernel_filter = np.array(kernel_filter_list, np.float32)
     
-    kernel_filter = torch.from_numpy(kernel_filter.astype(np.float)).float().cuda()
+    kernel_filter = torch.from_numpy(kernel_filter.astype(np.float)).float().to(args.device)
     # weights (in_channel, out_channel, kernel, kernel)
     kernel_filter = kernel_filter.unsqueeze(dim=1)
     
@@ -163,7 +164,7 @@ class Contrast_depth_loss(nn.Module):    # Pearson range [-1, 1] so if < 0, abs|
         contrast_out = contrast_depth_conv(out)
         contrast_label = contrast_depth_conv(label)
 
-        criterion_MSE = nn.MSELoss().cuda()
+        criterion_MSE = nn.MSELoss().to(args.device)
 
         loss = criterion_MSE(contrast_out, contrast_label)
         return loss
@@ -172,7 +173,7 @@ class Contrast_depth_loss(nn.Module):    # Pearson range [-1, 1] so if < 0, abs|
 def train_test():
     # GPU  & log file  -->   if use DataParallel, please comment this command
     os.environ["CUDA_VISIBLE_DEVICES"] = "%d" % (args.gpu)
-    wandb.init(project=args.wandb_name, sync_tensorboard=True)
+    # wandb.init(project=args.wandb_name, sync_tensorboard=True)
     temp = datetime.now()
 
     year = temp.year
@@ -222,17 +223,13 @@ def train_test():
         log_file.flush()
 
         model = CDCNpp(basic_conv=Conv2d_cd, theta=0.7)
-        #model = model.to(device)
-        model = model.cuda()
+        model = model.to(args.device)
         lr = args.lr
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.00005)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
     
-    print(model)
-
-
-    criterion_absolute_loss = nn.MSELoss().cuda()
-    criterion_contrastive_loss = Contrast_depth_loss().cuda() 
+    criterion_absolute_loss = nn.MSELoss().to(args.device)
+    criterion_contrastive_loss = Contrast_depth_loss().to(args.device)
 
     ACER_save = 1.0 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
@@ -248,101 +245,104 @@ def train_test():
         
         # load random data every epoch
         train_data = Spoofing_train(args.train_list, args.image_dir, args.size, transform=transforms.Compose([RandomErasing(), RandomHorizontalFlip(),  ToTensor(), Cutout(), Normaliztion()]))
-        dataloader_train = DataLoader(train_data, batch_size=args.batchsize, shuffle=True, num_workers=16)
+        dataloader_train = DataLoader(train_data, batch_size=args.batchsize, shuffle=True, num_workers=args.num_worker)
 
         i=0
         running_loss = 0.0
         abs_loss = 0.0
         cts_loss = 0.0
-        for sample_batched in tqdm(dataloader_train):
-            # get the inputs
-            inputs, map_label, spoof_label = sample_batched['image_x'].to(args.device), sample_batched['map_x'].to(args.device), sample_batched['spoofing_label'].to(args.device) 
-            optimizer.zero_grad()
-            #pdb.set_trace()
-          
-            # forward + backward + optimize
-            map_x, embedding, x_Block1, x_Block2, x_Block3, x_input =  model(inputs)
 
-            absolute_loss = criterion_absolute_loss(map_x, map_label)
-            contrastive_loss = criterion_contrastive_loss(map_x, map_label)
-            
-            loss =  absolute_loss + contrastive_loss
+        with alive_bar(total=len(dataloader_train), theme="musical", length=200) as bar:
+            for sample_batched in dataloader_train:
+                # get the inputs
+                inputs, map_label, spoof_label = sample_batched['image_x'].to(args.device), sample_batched['map_x'].to(args.device), sample_batched['spoofing_label'].to(args.device)
+                optimizer.zero_grad()
+                #pdb.set_trace()
 
-            loss.backward()
-            optimizer.step()
-            n = inputs.size(0)
-            loss_absolute.update(absolute_loss.data, n)
-            loss_contra.update(contrastive_loss.data, n)
-        
-            if i % echo_batches == echo_batches-1:    # print every 50 mini-batches
-                
-                # visualization
-                FeatureMap2Heatmap(x_input, x_Block1, x_Block2, x_Block3, map_x)
+                # forward + backward + optimize
+                map_x, embedding, x_Block1, x_Block2, x_Block3, x_input =  model(inputs)
 
-                # log written
-                log_file.write('epoch:%d, mini-batch:%3d, lr=%f, Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f \n' % (epoch + 1, i + 1, lr, loss_absolute.avg, loss_contra.avg))
-                log_file.flush()
+                absolute_loss = criterion_absolute_loss(map_x, map_label)
+                contrastive_loss = criterion_contrastive_loss(map_x, map_label)
 
-                writer.add_scalar('total loss',
-                            loss_absolute.avg+loss_contra.avg,
-                            epoch * len(dataloader_train) + i)
+                loss =  absolute_loss + contrastive_loss
 
-                writer.add_scalar('absolute loss',
-                            loss_absolute.avg,
-                            epoch * len(dataloader_train) + i)
+                loss.backward()
+                optimizer.step()
+                n = inputs.size(0)
+                loss_absolute.update(absolute_loss.data, n)
+                loss_contra.update(contrastive_loss.data, n)
 
-                writer.add_scalar('contrastive loss',
-                            loss_contra.avg,
-                            epoch * len(dataloader_train) + i)
-            i+=1
+                if i % echo_batches == echo_batches-1:    # print every 50 mini-batches
+
+                    # visualization
+                    FeatureMap2Heatmap(x_input, x_Block1, x_Block2, x_Block3, map_x)
+
+                    # log written
+                    log_file.write('epoch:%d, mini-batch:%3d, lr=%f, Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f \n' % (epoch + 1, i + 1, lr, loss_absolute.avg, loss_contra.avg))
+                    log_file.flush()
+
+                    writer.add_scalar('total loss',
+                                loss_absolute.avg+loss_contra.avg,
+                                epoch * len(dataloader_train) + i)
+
+                    writer.add_scalar('absolute loss',
+                                loss_absolute.avg,
+                                epoch * len(dataloader_train) + i)
+
+                    writer.add_scalar('contrastive loss',
+                                loss_contra.avg,
+                                epoch * len(dataloader_train) + i)
+                i+=1
+                bar()
         
         log_file.write('epoch:%d, Train: Absolute_Depth_loss= %.4f, Contrastive_Depth_loss= %.4f \n' % (epoch + 1, loss_absolute.avg, loss_contra.avg))
         log_file.flush()
            
         model.eval()
-        
+
+
+        # ----------------------------------------- TEST -----------------------------------------
         with torch.no_grad():
-            ###########################################
-            '''                test             '''
-            ##########################################
             # test for ACC
             test_data = Spoofing_valtest(args.test_list, args.image_dir, args.size, transform=transforms.Compose([Normaliztion_valtest(), ToTensor_valtest()]))
-            dataloader_test = DataLoader(test_data, batch_size=1, shuffle=False, num_workers=16)
+            dataloader_test = DataLoader(test_data, batch_size=1, shuffle=False, num_workers=args.num_worker)
             
             map_score_list = []
-            
-            for  sample_batched in tqdm(dataloader_test):
-                # get the inputs
-                inputs, spoof_label = sample_batched['image_x'].to(args.device), sample_batched['spoofing_label'].to(args.device)
-                #test_maps = sample_batched['val_map_x'].to(args.device)   # binary map from PRNet 
-    
-                optimizer.zero_grad()
-                
-                #pdb.set_trace()
-                map_score = 0.0
-                map_x, embedding, x_Block1, x_Block2, x_Block3, x_input =  model(inputs[:,:,:,:])
-                
-                score_norm = torch.mean(map_x)
-                map_score += score_norm
-                map_score_list.append('{} {}\n'.format(map_score, spoof_label[0][0]))
-                            
-            map_score_test_filename = args.log+'/'+ args.log+'_map_score_test.txt'
-            with open(map_score_test_filename, 'w') as file:
-                file.writelines(map_score_list)    
-            
-            #############################################################     
-            #       performance measurement both val and test
-            #############################################################     
-            test_ACC, test_APCER, test_BPCER, test_ACER, test_best_threshold = performances(map_score_test_filename)
-            print('Test:  ACC= %.4f, APCER= %.4f, BPCER= %.4f, ACER= %.4f, test_threshold= %.4f' % (test_ACC, test_APCER, test_BPCER, test_ACER, test_best_threshold))
-            log_file.write('Test:  ACC= %.4f, APCER= %.4f, BPCER= %.4f, ACER= %.4f, test_threshold= %.4f \n' % (test_ACC, test_APCER, test_BPCER, test_ACER, test_best_threshold))
-            log_file.flush()
-            if test_ACER<ACER_save:
-                print('-----------YAHOO !!! UPDATE SOTA----------------------')
-                torch.save(model.state_dict(), args.log+'/'+args.log+'_{}.pkl'.format((epoch + 1)))
-                ACER_save = test_ACER
-            if epoch%2 == 0:
-                torch.save(model.state_dict(), args.log + '/' + args.log + '_{}.pkl'.format((epoch + 1)))
+
+            with alive_bar(total=len(dataloader_test), theme="musical", length=200) as bar:
+                for sample_batched in dataloader_test:
+                    # get the inputs
+                    inputs, spoof_label = sample_batched['image_x'].to(args.device), sample_batched['spoofing_label'].to(args.device)
+
+                    optimizer.zero_grad()
+
+                    map_score = 0.0
+                    map_x, embedding, x_Block1, x_Block2, x_Block3, x_input =  model(inputs[:,:,:,:])
+
+                    score_norm = torch.mean(map_x)
+                    map_score += score_norm
+                    map_score_list.append('{} {}\n'.format(map_score, spoof_label[0][0]))
+
+                    bar()
+
+                map_score_test_filename = args.log+'/'+ args.log+'_map_score_test.txt'
+                with open(map_score_test_filename, 'w') as file:
+                    file.writelines(map_score_list)
+
+                #############################################################
+                #       performance measurement both val and test
+                #############################################################
+                test_ACC, test_APCER, test_BPCER, test_ACER, test_best_threshold = performances(map_score_test_filename)
+                print('Test:  ACC= %.4f, APCER= %.4f, BPCER= %.4f, ACER= %.4f, test_threshold= %.4f' % (test_ACC, test_APCER, test_BPCER, test_ACER, test_best_threshold))
+                log_file.write('Test:  ACC= %.4f, APCER= %.4f, BPCER= %.4f, ACER= %.4f, test_threshold= %.4f \n' % (test_ACC, test_APCER, test_BPCER, test_ACER, test_best_threshold))
+                log_file.flush()
+                if test_ACER<ACER_save:
+                    print('-----------YAHOO !!! UPDATE SOTA----------------------')
+                    torch.save(model.state_dict(), args.log+'/'+args.log+'_{}.pkl'.format((epoch + 1)))
+                    ACER_save = test_ACER
+                if epoch%2 == 0:
+                    torch.save(model.state_dict(), args.log + '/' + args.log + '_{}.pkl'.format((epoch + 1)))
  
 
     print('Finished Training')
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', type=int, default=0, help='the gpu id used for predict')
     parser.add_argument('--lr', type=float, default=1e-4
                             , help='initial learning rate')  
-    parser.add_argument('--batchsize', type=int, default=32, help='initial batchsize')  
+    parser.add_argument('--batchsize', type=int, default=8, help='initial batchsize')
     parser.add_argument('--step_size', type=int, default=300, help='how many epochs lr decays once')  # 500 
     parser.add_argument('--gamma', type=float, default=0.5, help='gamma of optim.lr_scheduler.StepLR, decay of lr')
     parser.add_argument('--echo_batches', type=int, default=50, help='how many batches display once')  # 50
@@ -364,10 +364,11 @@ if __name__ == "__main__":
     parser.add_argument('--log', type=str, default="CDCNpp_train_oulu_npu_ftech", help='log and save model name')
     parser.add_argument('--image_dir', type=str, default="/root/", help='Train Image root') # khong can
 
-    parser.add_argument('--train_list', default='/root/data/ftech_fas_data.txt', help='Train Image list text')
-    parser.add_argument('--test_list', default='/root/Xiaomi_Mi_10T_final.txt', help='Test Image list text')
+    parser.add_argument('--train_list', default='../dataset/train_list.txt', help='Train Image list text')
+    parser.add_argument('--test_list', default='../test_list.txt', help='Test Image list text')
 
-    parser.add_argument('--device', default='cuda', help='cpu / cuda')
+    parser.add_argument('--num_worker', type=int, default=8, help='Num woker for dataloader')
+    parser.add_argument('--device', default='cpu', help='cpu / cuda')
     parser.add_argument('--weights', type=str, default="/root/CDCNpp_train_oulu_npu_gplx_replay_print_2022_8_20_17.pkl", help='weight root')
     parser.add_argument('--finetune', action='store_true', help='whether finetune other models')
     parser.add_argument('--wandb_name',type=str,default='training_CDCN_ftech_fas_data',help='name wandb project')
