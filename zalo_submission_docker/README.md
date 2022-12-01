@@ -61,7 +61,7 @@ docker run --gpus '"device=0"' -v /mnt/datadrive/thonglv/SSAN/data/:/data -v /mn
 ```
 and
 ```
-docker run --gpus '"device=0"' -p9777:9777 -v /mnt/datadrive/thonglv/SSAN/data:/code/data -v /mnt/datadrive/thonglv/SSAN/:/code/result zac2022:v1 /bin/bash /code/start_jupyter.
+docker run --gpus '"device=0"' -p9777:9777 -v /mnt/datadrive/thonglv/SSAN/data:/code/data -v /mnt/datadrive/thonglv/SSAN/:/code/result zac2022:v1 /bin/bash /code/start_jupyter.sh
 ```
 (data in container /code/data/private_test/videos/...)
 
