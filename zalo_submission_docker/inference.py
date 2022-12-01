@@ -102,7 +102,7 @@ def preproces(image):
 
 class Inference:
     def __init__(self, model):
-        self.model = get_model("SSAN_R", max_iter=4114800).cpu()
+        self.model = get_model("SSAN_R", max_iter=685000).cpu()
         model_ = torch.load(model)
         self.model.load_state_dict(model_["state_dict"])
         self.model.eval()

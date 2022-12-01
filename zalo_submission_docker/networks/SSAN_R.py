@@ -26,7 +26,7 @@ class Discriminator(nn.Module):
 class SSAN_R(nn.Module):
     def __init__(self, ada_num=2, max_iter=4000):
         super(SSAN_R, self).__init__()
-        model_resnet = models.resnet34(weights="ResNet34_Weights.DEFAULT")
+        model_resnet = models.resnet18(weights="ResNet18_Weights.DEFAULT")
 
         self.input_layer = nn.Sequential(
             model_resnet.conv1,
