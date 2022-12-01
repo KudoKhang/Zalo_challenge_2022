@@ -27,7 +27,7 @@ docker run --gpus '"device=0"' --network host -it --name zac2022 pytorch/pytorch
 ```
 
 ### Check GPU
-`nividia-smi`
+`nvidia-smi`
 
 ### Source code
 
