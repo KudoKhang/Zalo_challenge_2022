@@ -67,6 +67,10 @@ docker run --gpus '"device=0"' -p9777:9777 -v /mnt/datadrive/thonglv/SSAN/data:/
 
 The submission files will be saved in `/mnt/datadrive/thonglv/SSAN/` (`submission.csv`, `jupyter_submission.csv`, `time_submission.csv`)
 
+### Export images and check MD5
+`docker save -o zac2022.tar.gz zac2022:v1`
+`md5sum zac2022.tar.gz`
+
 ## Reference
 [Hướng dẫn dùng docker để nộp bài cho Zalo
 AI Challenge 2022](https://dl-challenge.zalo.ai/Docker_ZAC2022.pdf) 
