@@ -69,4 +69,4 @@ The submission files will be saved in `/mnt/datadrive/thonglv/SSAN/` (`submissio
 
 ## Reference
 [Hướng dẫn dùng docker để nộp bài cho Zalo
-AI Challenge 2022](https://dl-challenge.zalo.ai/Docker_ZAC2022.pdf)
+AI Challenge 2022](https://dl-challenge.zalo.ai/Docker_ZAC2022.pdf) 
